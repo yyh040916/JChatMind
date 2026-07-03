@@ -1,0 +1,41 @@
+# Java / Maven
+target/
+**/target/
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / frontend
+node_modules/
+**/node_modules/
+dist/
+build/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+._*
+__MACOSX/
+**/__MACOSX/
+Thumbs.db
+
+# Logs / temp files
+*.log
+logs/
+tmp/
+temp/
+
+# Local secrets and private config
+.env
+.env.*
+!.env.example
+application-local.yaml
+application-local.yml
+**/application-local.yaml
+**/application-local.yml
+**/src/main/resources/application-secret.yaml
+**/src/main/resources/application-secret.yml
+
+# Runtime data
+data/
+**/data/

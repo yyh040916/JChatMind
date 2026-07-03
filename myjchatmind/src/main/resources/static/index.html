@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyJChatMind</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f6f7f9;
+            color: #1f2937;
+        }
+
+        .app {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .panel {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        input, textarea, button {
+            font: inherit;
+        }
+
+        input, textarea {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 10px;
+        }
+
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        button {
+            border: 0;
+            border-radius: 6px;
+            padding: 10px 14px;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: .6;
+            cursor: not-allowed;
+        }
+
+        .messages {
+            min-height: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            max-width: 76%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        .USER {
+            align-self: flex-end;
+            background: #2563eb;
+            color: white;
+        }
+
+        .ASSISTANT {
+            align-self: flex-start;
+            background: #eef2ff;
+            color: #111827;
+        }
+
+        .SYSTEM {
+            align-self: center;
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+
+        .muted {
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+<main class="app">
+    <h1>MyJChatMind</h1>
+    <p class="muted">最小版：创建智能体、创建会话、发送消息、调用 DeepSeek。</p>
+
+    <section class="panel">
+        <h2>1. 创建智能体</h2>
+        <div class="row">
+            <input id="agentName" value="通用助手" placeholder="智能体名称">
+            <input id="model" value="deepseek-chat" placeholder="模型名">
+        </div>
+        <textarea id="systemPrompt" placeholder="系统提示词">你是一个简洁、可靠的中文 AI 助手。</textarea>
+        <p>
+            <button onclick="createAgent()">创建智能体</button>
+            <span id="agentInfo" class="muted"></span>
+        </p>
+    </section>
+
+    <section class="panel">
+        <h2>2. 创建会话</h2>
+        <input id="sessionTitle" value="测试会话" placeholder="会话标题">
+        <p>
+            <button onclick="createSession()">创建会话</button>
+            <span id="sessionInfo" class="muted"></span>
+        </p>
+    </section>
+
+    <section class="panel">
+        <h2>3. 聊天</h2>
+        <div id="messages" class="messages"></div>
+        <div class="row" style="grid-template-columns: 1fr auto; margin-top: 12px;">
+            <input id="messageInput" placeholder="输入消息，比如：1+1等于几">
+            <button id="sendBtn" onclick="sendMessage()">发送</button>
+        </div>
+    </section>
+</main>
+
+<script>
+    let agentId = null;
+    let sessionId = null;
+
+    async function request(url, options) {
+        const response = await fetch(url, {
+            headers: { "Content-Type": "application/json" },
+            ...options
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || "请求失败");
+        }
+        return data;
+    }
+
+    async function createAgent() {
+        const agent = await request("/api/agents", {
+            method: "POST",
+            body: JSON.stringify({
+                name: document.getElementById("agentName").value,
+                systemPrompt: document.getElementById("systemPrompt").value,
+                model: document.getElementById("model").value
+            })
+        });
+        agentId = agent.id;
+        document.getElementById("agentInfo").textContent = `已创建：${agent.name}`;
+    }
+
+    async function createSession() {
+        if (!agentId) {
+            await createAgent();
+        }
+        const session = await request("/api/sessions", {
+            method: "POST",
+            body: JSON.stringify({
+                agentId,
+                title: document.getElementById("sessionTitle").value
+            })
+        });
+        sessionId = session.id;
+        document.getElementById("sessionInfo").textContent = `已创建：${session.title}`;
+        renderMessages([]);
+    }
+
+    async function sendMessage() {
+        if (!sessionId) {
+            await createSession();
+        }
+
+        const input = document.getElementById("messageInput");
+        const sendBtn = document.getElementById("sendBtn");
+        const content = input.value.trim();
+        if (!content) return;
+
+        sendBtn.disabled = true;
+        input.value = "";
+        renderMessages([{ role: "USER", content }, { role: "SYSTEM", content: "AI 思考中..." }]);
+
+        try {
+            const response = await request("/api/messages/send", {
+                method: "POST",
+                body: JSON.stringify({ sessionId, content })
+            });
+            renderMessages(response.messages);
+        } catch (error) {
+            renderMessages([
+                { role: "USER", content },
+                { role: "SYSTEM", content: `请求失败：${error.message}` }
+            ]);
+        } finally {
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    }
+
+    function renderMessages(messages) {
+        const container = document.getElementById("messages");
+        container.innerHTML = messages.map(message => `
+            <div class="message ${message.role}">
+                ${escapeHtml(message.content)}
+            </div>
+        `).join("");
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    document.getElementById("messageInput").addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            sendMessage();
+        }
+    });
+</script>
+</body>
+</html>
